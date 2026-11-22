@@ -171,9 +171,20 @@ export default function MapaPostos({ postos, usuario, modoProximo, selecionado, 
   }, []);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => inst.current?.mapa.invalidateSize());
-    return () => cancelAnimationFrame(frame);
-  }, [expandido]);
+    const mapa = inst.current?.mapa;
+    const container = elemento.current;
+    if (status !== 'pronto' || !mapa || !container) return;
+    let frame = requestAnimationFrame(() => mapa.invalidateSize());
+    const observador = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => mapa.invalidateSize());
+    });
+    observador?.observe(container);
+    return () => {
+      observador?.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [expandido, status]);
 
   useEffect(() => {
     const estado = inst.current;

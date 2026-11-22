@@ -35,12 +35,12 @@ export default function Calculadora() {
       <p className="aviso">Estimativa. Os preços informados podem não corresponder ao valor atual no posto.</p>
 
       <div className="form">
-        <label>Litros<input value={litros} onChange={(e) => setLitros(e.target.value)} /></label>
-        <label>Preço no posto A (R$/L)<input value={precoA} onChange={(e) => setPrecoA(e.target.value)} /></label>
-        <label>Preço no posto B (R$/L)<input value={precoB} onChange={(e) => setPrecoB(e.target.value)} /></label>
-        <label>Distância até o posto B, ida (km)<input value={distancia} onChange={(e) => setDistancia(e.target.value)} /></label>
-        <label>Consumo do carro (km/L)<input value={kmL} onChange={(e) => setKmL(e.target.value)} /></label>
-        <label>Preço da gasolina para o deslocamento (R$/L)<input value={precoRef} onChange={(e) => setPrecoRef(e.target.value)} /></label>
+        <label>Litros<input inputMode="decimal" value={litros} onChange={(e) => setLitros(e.target.value)} /></label>
+        <label>Preço no posto A (R$/L)<input inputMode="decimal" value={precoA} onChange={(e) => setPrecoA(e.target.value)} /></label>
+        <label>Preço no posto B (R$/L)<input inputMode="decimal" value={precoB} onChange={(e) => setPrecoB(e.target.value)} /></label>
+        <label>Distância até o posto B, ida (km)<input inputMode="decimal" value={distancia} onChange={(e) => setDistancia(e.target.value)} /></label>
+        <label>Consumo do carro (km/L)<input inputMode="decimal" value={kmL} onChange={(e) => setKmL(e.target.value)} /></label>
+        <label>Preço da gasolina para o deslocamento (R$/L)<input inputMode="decimal" value={precoRef} onChange={(e) => setPrecoRef(e.target.value)} /></label>
       </div>
 
       <p className="resultado">{resultado}</p>
