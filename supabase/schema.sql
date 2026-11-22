@@ -129,3 +129,20 @@ $$;
 revoke execute on function public.nearby_priced_stations(double precision,double precision,text) from public;
 grant execute on function public.nearby_priced_stations(double precision,double precision,text) to anon, authenticated;
 notify pgrst, 'reload schema';
+
+-- Coordenadas das sedes do IBGE para a busca por raio.
+alter table public.municipalities add column if not exists latitude double precision,
+ add column if not exists longitude double precision;
+create index if not exists municipalities_coordinates_idx on public.municipalities (latitude,longitude);
+create or replace function public.prices_in_municipalities(city_ids integer[], fuel_type text)
+returns setof public.priced_stations
+language sql stable security invoker set search_path = ''
+as $$
+  select p.*
+  from public.priced_stations p
+  join public.municipalities m on m.uf = p.uf and lower(m.nome) = p.municipio
+  where m.ibge_id = any (city_ids) and p.produto = fuel_type;
+$$;
+revoke execute on function public.prices_in_municipalities(integer[],text) from public;
+grant execute on function public.prices_in_municipalities(integer[],text) to anon, authenticated;
+notify pgrst, 'reload schema';

@@ -1,13 +1,13 @@
 import Icon from '../components/Icon';
 import { useEffect, useMemo, useState } from 'react';
 import MapaPostos from '../components/MapaPostos';
-import { buscarMunicipios, buscarPrecos, buscarPrecosProximos, supabaseConfigurado, type Municipio } from '../lib/supabase';
+import { buscarMunicipios, buscarMunicipiosNoRaio, buscarPrecos, buscarPrecosDasCidades, supabaseConfigurado, type Municipio, type MunicipioNoRaio } from '../lib/supabase';
 import { coordenadasDoPosto, distanciaKm, PRODUTOS, labelProduto, priceStatus, type Coordenadas, type PriceRow, type Produto } from '../lib/prices';
 import { AvisoPrecos, StatusBadge } from '../components/PriceNotice';
 
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
-const RAIO_KM = 75;
+const RAIOS_KM = [10, 25, 50, 75, 100];
 const kmFormatado = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 
 export default function Postos() {
@@ -22,6 +22,9 @@ export default function Postos() {
   const [erroMunicipios, setErroMunicipios] = useState(false);
   const [usuario, setUsuario] = useState<Coordenadas | null>(null);
   const [proximidade, setProximidade] = useState(false);
+  const [raio, setRaio] = useState(0);
+  const [cidadesNoRaio, setCidadesNoRaio] = useState<MunicipioNoRaio[]>([]);
+  const [cidadeFiltrada, setCidadeFiltrada] = useState('');
   const [localizando, setLocalizando] = useState(false);
   const [erroLocalizacao, setErroLocalizacao] = useState('');
   const [postoSelecionado, setPostoSelecionado] = useState<string | null>(null);
@@ -37,6 +40,8 @@ export default function Postos() {
       ({ coords }) => {
         setUsuario([coords.latitude, coords.longitude]);
         setProximidade(true);
+        setRaio((atual) => atual || 75);
+        setCidadeFiltrada('');
         setLocalizando(false);
       },
       (error) => {
@@ -61,8 +66,18 @@ export default function Postos() {
     return () => { cancelado = true; };
   }, [uf]);
 
+  const cidadeBase = municipios.find((cidade) => cidade.nome === municipio);
+  const origem = useMemo<Coordenadas | null>(() => {
+    if (proximidade) return usuario;
+    return cidadeBase && cidadeBase.latitude !== null && cidadeBase.longitude !== null
+      ? [cidadeBase.latitude, cidadeBase.longitude] : null;
+  }, [cidadeBase, proximidade, usuario]);
+  const filtrarPorRaio = raio > 0;
+
   useEffect(() => {
-    if (!supabaseConfigurado || (!proximidade && !municipio.trim())) {
+    setCidadesNoRaio([]);
+    setPostoSelecionado(null);
+    if (!supabaseConfigurado || (!proximidade && !municipio.trim()) || (filtrarPorRaio && !origem)) {
       setLinhas(null);
       setCarregando(false);
       setErro(null);
@@ -72,9 +87,12 @@ export default function Postos() {
     setCarregando(true);
     setErro(null);
     setLinhas(null);
-    setPostoSelecionado(null);
-    const consulta = proximidade && usuario
-      ? buscarPrecosProximos(usuario, produto)
+    const consulta = filtrarPorRaio && origem
+      ? buscarMunicipiosNoRaio(origem, raio).then((cidades) => {
+        if (cancelado) return [];
+        setCidadesNoRaio(cidades);
+        return buscarPrecosDasCidades(cidades.map((cidade) => cidade.ibge_id), produto);
+      })
       : buscarPrecos({ uf, municipio: municipio.trim(), produto });
     consulta
       .then((r) => !cancelado && setLinhas(r))
@@ -83,18 +101,20 @@ export default function Postos() {
     return () => {
       cancelado = true;
     };
-  }, [uf, municipio, produto, proximidade, usuario]);
+  }, [uf, municipio, produto, proximidade, origem, raio, filtrarPorRaio]);
 
   const resultados = useMemo(() => {
-    const itens = (linhas ?? []).map((posto) => {
+    const filtro = cidadesNoRaio.find((cidade) => String(cidade.ibge_id) === cidadeFiltrada);
+    const itens = (linhas ?? []).filter((posto) => !filtro ||
+      (posto.uf === filtro.uf && posto.municipio === filtro.nome.toLocaleLowerCase('pt-BR'))).map((posto) => {
       const ponto = coordenadasDoPosto(posto);
-      return { posto, km: usuario && ponto ? distanciaKm(usuario, ponto) : null };
+      const referencia = filtrarPorRaio ? origem : usuario;
+      return { posto, km: referencia && ponto ? distanciaKm(referencia, ponto) : null };
     });
-    return proximidade
-      ? itens.filter(({ km }) => km !== null && km <= RAIO_KM)
-        .sort((a, b) => (a.km ?? Infinity) - (b.km ?? Infinity) || a.posto.preco - b.posto.preco)
+    return filtrarPorRaio
+      ? itens.sort((a, b) => (a.km ?? Infinity) - (b.km ?? Infinity) || a.posto.preco - b.posto.preco)
       : itens;
-  }, [linhas, usuario, proximidade]);
+  }, [linhas, usuario, origem, filtrarPorRaio, cidadesNoRaio, cidadeFiltrada]);
   const pontosNoMapa = useMemo(() => resultados.map(({ posto }) => posto), [resultados]);
 
   return (
@@ -115,12 +135,14 @@ export default function Postos() {
             selecionado={postoSelecionado} aoSelecionar={setPostoSelecionado} />
           <div className="mapa-rodape">
             {erroLocalizacao && <p role="status">{erroLocalizacao}</p>}
-            {proximidade && <p>Postos com preços pesquisados em até {RAIO_KM} km, em linha reta.</p>}
-            {!proximidade && <p>Os marcadores mostram postos com coordenadas no cadastro da ANP.</p>}
+            {filtrarPorRaio && origem
+              ? <p>Sedes municipais em até {raio} km em linha reta de {proximidade ? 'você' : municipio}.</p>
+              : <p>Os marcadores mostram postos com coordenadas no cadastro da ANP.</p>}
             {usuario && <button type="button" className="botao-texto" onClick={() => {
               setProximidade(false);
               setUsuario(null);
               setErroLocalizacao('');
+              setCidadeFiltrada('');
             }}>Limpar minha localização</button>}
           </div>
         </aside>
@@ -132,6 +154,7 @@ export default function Postos() {
                 setMunicipio('');
                 setMunicipios([]);
                 setProximidade(false);
+                setCidadeFiltrada('');
               }}>
                 {UFS.map((sigla) => <option key={sigla}>{sigla}</option>)}
               </select>
@@ -140,6 +163,7 @@ export default function Postos() {
               <select value={municipio} onChange={(e) => {
                 setMunicipio(e.target.value);
                 setProximidade(false);
+                setCidadeFiltrada('');
               }}
                 disabled={carregandoMunicipios || municipios.length === 0}>
                 <option value="">{carregandoMunicipios ? 'Carregando…' : 'Selecione'}</option>
@@ -153,7 +177,33 @@ export default function Postos() {
             </label>
           </div>
 
+          <div className="filtros-distancia">
+            <label>Raio de busca
+              <select value={raio} disabled={!proximidade && !municipio}
+                onChange={(e) => {
+                  setRaio(Number(e.target.value));
+                  setCidadeFiltrada('');
+                }}>
+                {!proximidade && <option value={0}>Somente a cidade selecionada</option>}
+                {RAIOS_KM.map((km) => <option key={km} value={km}>Até {km} km</option>)}
+              </select>
+            </label>
+            {filtrarPorRaio && origem && <label>Cidades no raio ({cidadesNoRaio.length})
+              <select value={cidadeFiltrada} disabled={!cidadesNoRaio.length} onChange={(e) => {
+                setCidadeFiltrada(e.target.value);
+                setPostoSelecionado(null);
+              }}>
+                <option value="">Todas no raio</option>
+                {cidadesNoRaio.map((cidade) => <option key={cidade.ibge_id} value={cidade.ibge_id}>
+                  {cidade.nome} ({cidade.uf}) · {kmFormatado.format(cidade.km)} km
+                </option>)}
+              </select>
+            </label>}
+          </div>
+
           <div aria-live="polite">
+            {filtrarPorRaio && municipio && !proximidade && !origem && !carregandoMunicipios &&
+              <p className="vazio">Esta cidade está sem coordenadas de referência. Selecione outra ou use sua localização.</p>}
             {erroMunicipios && <p className="erro">Não foi possível carregar os municípios. Atualize a página para tentar novamente.</p>}
             {!supabaseConfigurado && <p className="vazio">Banco não configurado. Nenhum preço para exibir.</p>}
             {supabaseConfigurado && !proximidade && !municipio && !erroMunicipios && !carregandoMunicipios &&
@@ -162,8 +212,8 @@ export default function Postos() {
             {erro && <p className="erro">Não foi possível carregar os preços: {erro}</p>}
 
             {linhas && resultados.length === 0 && !carregando && !erro && (
-              <p className="vazio">{proximidade
-                ? 'Não encontrei postos com preços desse combustível e coordenadas no raio informado.'
+              <p className="vazio">{filtrarPorRaio
+                ? (cidadesNoRaio.length ? 'Não encontrei preços desse combustível nas cidades selecionadas.' : 'Nenhuma sede municipal encontrada nesse raio.')
                 : `A base da ANP ainda não tem preços de ${labelProduto(produto)} em ${municipio}.`}</p>
             )}
 
@@ -181,7 +231,7 @@ export default function Postos() {
                             <br />
                             <StatusBadge status={priceStatus(l.data_coleta)} dataColeta={l.data_coleta} />
                             <div className="posto-detalhe">
-                              {proximidade && <span>{l.municipio.toLocaleUpperCase('pt-BR')}, {l.uf}</span>}
+                              {filtrarPorRaio && <span>{l.municipio.toLocaleUpperCase('pt-BR')}, {l.uf}</span>}
                               {km !== null && <span>{kmFormatado.format(km)} km em linha reta</span>}
                               {coordenadasDoPosto(l) ? <button type="button" className="botao-texto"
                                 aria-pressed={postoSelecionado === l.cnpj} onClick={() => {
