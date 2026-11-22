@@ -146,7 +146,8 @@ export default function Postos() {
       return { posto, km: referencia && ponto ? distanciaKm(referencia, ponto) : null };
     });
     return raioAplicado
-      ? itens.sort((a, b) => (a.km ?? Infinity) - (b.km ?? Infinity) || a.posto.preco - b.posto.preco)
+      ? itens.filter(({ km }) => km !== null && km <= (busca?.raio ?? 0))
+        .sort((a, b) => (a.km ?? Infinity) - (b.km ?? Infinity) || a.posto.preco - b.posto.preco)
       : itens;
   }, [linhas, usuario, busca, raioAplicado, cidadesNoRaio, cidadeFiltrada]);
   const pontosNoMapa = useMemo(() => resultados.map(({ posto }) => posto), [resultados]);
@@ -170,7 +171,7 @@ export default function Postos() {
           <div className="mapa-rodape">
             {erroLocalizacao && <p role="status">{erroLocalizacao}</p>}
             {raioAplicado && busca
-              ? <p>Sedes municipais em até {busca.raio} km em linha reta de {busca.proximidade ? 'você' : busca.municipio}.</p>
+              ? <p>Cidades e postos em até {busca.raio} km em linha reta de {busca.proximidade ? 'você' : busca.municipio}.</p>
               : <p>Os marcadores mostram postos com coordenadas no cadastro da ANP.</p>}
             {usuario && <button type="button" className="botao-texto" onClick={() => {
               setProximidade(false);
@@ -214,7 +215,7 @@ export default function Postos() {
           </div>
 
           <div className="filtros-distancia">
-            <label>Raio de busca
+            <label>Distância máxima dos postos
               <select value={raio} disabled={!proximidade && !municipio}
                 onChange={(e) => {
                   setRaio(Number(e.target.value));
@@ -256,7 +257,7 @@ export default function Postos() {
 
             {linhas && resultados.length === 0 && !carregando && !erro && (
               <p className="vazio" role="status">{raioAplicado
-                ? (cidadesNoRaio.length ? 'Não encontrei preços desse combustível nas cidades selecionadas.' : 'Nenhuma sede municipal encontrada nesse raio.')
+                ? (cidadesNoRaio.length ? 'Não encontrei postos com preço e coordenadas dentro da distância escolhida.' : 'Nenhuma sede municipal encontrada nesse raio.')
                 : `A base da ANP ainda não tem preços de ${labelProduto(busca?.produto ?? produto)} em ${busca?.municipio ?? municipio}.`}</p>
             )}
 
