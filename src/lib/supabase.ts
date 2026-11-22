@@ -26,12 +26,13 @@ export interface Municipio {
 
 export type MunicipioNoRaio = Municipio & { km: number };
 
-export async function buscarMunicipios(uf: string): Promise<Municipio[]> {
-  const { data, error } = await getClient()
+export async function buscarMunicipios(uf: string, sinal?: AbortSignal): Promise<Municipio[]> {
+  const consulta = getClient()
     .from('municipalities')
     .select('ibge_id, nome, uf, latitude, longitude')
     .eq('uf', uf)
     .order('nome');
+  const { data, error } = await (sinal ? consulta.abortSignal(sinal) : consulta);
 
   if (error) throw new Error(error.message);
   return (data ?? []) as Municipio[];
@@ -42,8 +43,8 @@ export async function buscarPrecos(params: {
   uf: string;
   municipio: string;
   produto: Produto;
-}): Promise<PriceRow[]> {
-  const { data, error } = await getClient()
+}, sinal?: AbortSignal): Promise<PriceRow[]> {
+  const consulta = getClient()
     .from('priced_stations')
     .select('cnpj, razao_social, municipio, uf, produto, preco, data_coleta, latitude, longitude, endereco')
     .eq('uf', params.uf)
@@ -51,21 +52,23 @@ export async function buscarPrecos(params: {
     .eq('produto', params.produto)
     .order('preco', { ascending: true })
     .limit(200);
+  const { data, error } = await (sinal ? consulta.abortSignal(sinal) : consulta);
 
   if (error) throw new Error(error.message);
   return (data ?? []) as PriceRow[];
 }
 
-export async function buscarMunicipiosNoRaio(origem: Coordenadas, raio: number): Promise<MunicipioNoRaio[]> {
+export async function buscarMunicipiosNoRaio(origem: Coordenadas, raio: number, sinal?: AbortSignal): Promise<MunicipioNoRaio[]> {
   const lat = Number(origem[0].toFixed(2));
   const lng = Number(origem[1].toFixed(2));
   const margemLat = (raio + 2) / 110;
   const cosBorda = Math.cos((Math.min(89, Math.abs(lat) + margemLat)) * Math.PI / 180);
   const margemLng = margemLat / Math.max(0.03, cosBorda);
-  const { data, error } = await getClient().from('municipalities')
+  const consulta = getClient().from('municipalities')
     .select('ibge_id,nome,uf,latitude,longitude')
     .gte('latitude', lat - margemLat).lte('latitude', lat + margemLat)
     .gte('longitude', lng - margemLng).lte('longitude', lng + margemLng);
+  const { data, error } = await (sinal ? consulta.abortSignal(sinal) : consulta);
   if (error) throw new Error(error.message);
   return ((data ?? []) as Municipio[]).flatMap((cidade) => {
     if (cidade.latitude === null || cidade.longitude === null) return [];
@@ -74,14 +77,15 @@ export async function buscarMunicipiosNoRaio(origem: Coordenadas, raio: number):
   }).sort((a, b) => a.km - b.km || a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
-export async function buscarPrecosDasCidades(ids: number[], produto: Produto): Promise<PriceRow[]> {
+export async function buscarPrecosDasCidades(ids: number[], produto: Produto, sinal?: AbortSignal): Promise<PriceRow[]> {
   if (!ids.length) return [];
   const precos: PriceRow[] = [];
   const tamanhoPagina = 500;
   for (let inicio = 0; ; inicio += tamanhoPagina) {
-    const { data, error } = await getClient().rpc('prices_in_municipalities', {
+    const consulta = getClient().rpc('prices_in_municipalities', {
       city_ids: ids, fuel_type: produto,
     }).order('cnpj').range(inicio, inicio + tamanhoPagina - 1);
+    const { data, error } = await (sinal ? consulta.abortSignal(sinal) : consulta);
     if (error) throw new Error(error.message);
     const pagina = (data ?? []) as PriceRow[];
     precos.push(...pagina);

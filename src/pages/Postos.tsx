@@ -1,6 +1,7 @@
 import Icon from '../components/Icon';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import MapaPostos from '../components/MapaPostos';
+import Carregamento from '../components/Carregamento';
 import { buscarMunicipios, buscarMunicipiosNoRaio, buscarPrecos, buscarPrecosDasCidades, supabaseConfigurado, type Municipio, type MunicipioNoRaio } from '../lib/supabase';
 import { coordenadasDoPosto, distanciaKm, PRODUTOS, labelProduto, priceStatus, type Coordenadas, type PriceRow, type Produto } from '../lib/prices';
 import { AvisoPrecos, StatusBadge } from '../components/PriceNotice';
@@ -9,6 +10,15 @@ const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', '
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 const RAIOS_KM = [10, 25, 50, 75, 100];
 const kmFormatado = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
+
+interface Busca {
+  uf: string;
+  municipio: string;
+  produto: Produto;
+  raio: number;
+  origem: Coordenadas | null;
+  proximidade: boolean;
+}
 
 export default function Postos() {
   const [uf, setUf] = useState('GO');
@@ -28,6 +38,7 @@ export default function Postos() {
   const [localizando, setLocalizando] = useState(false);
   const [erroLocalizacao, setErroLocalizacao] = useState('');
   const [postoSelecionado, setPostoSelecionado] = useState<string | null>(null);
+  const [busca, setBusca] = useState<Busca | null>(null);
 
   function usarMinhaLocalizacao() {
     if (!navigator.geolocation) {
@@ -57,13 +68,18 @@ export default function Postos() {
   useEffect(() => {
     if (!supabaseConfigurado) return;
     let cancelado = false;
+    const controller = new AbortController();
+    const limite = window.setTimeout(() => controller.abort(), 15000);
     setCarregandoMunicipios(true);
     setErroMunicipios(false);
-    buscarMunicipios(uf)
+    buscarMunicipios(uf, controller.signal)
       .then((lista) => !cancelado && setMunicipios(lista))
       .catch(() => !cancelado && setErroMunicipios(true))
-      .finally(() => !cancelado && setCarregandoMunicipios(false));
-    return () => { cancelado = true; };
+      .finally(() => {
+        window.clearTimeout(limite);
+        if (!cancelado) setCarregandoMunicipios(false);
+      });
+    return () => { cancelado = true; window.clearTimeout(limite); controller.abort(); };
   }, [uf]);
 
   const cidadeBase = municipios.find((cidade) => cidade.nome === municipio);
@@ -73,11 +89,22 @@ export default function Postos() {
       ? [cidadeBase.latitude, cidadeBase.longitude] : null;
   }, [cidadeBase, proximidade, usuario]);
   const filtrarPorRaio = raio > 0;
+  const raioAplicado = (busca?.raio ?? 0) > 0;
+  const podePesquisar = supabaseConfigurado && !localizando
+    && (proximidade ? usuario !== null : municipio !== '' && !carregandoMunicipios)
+    && (!filtrarPorRaio || origem !== null);
+
+  function pesquisar(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    if (!podePesquisar) return;
+    setBusca({ uf, municipio, produto, raio, origem, proximidade });
+  }
 
   useEffect(() => {
     setCidadesNoRaio([]);
+    setCidadeFiltrada('');
     setPostoSelecionado(null);
-    if (!supabaseConfigurado || (!proximidade && !municipio.trim()) || (filtrarPorRaio && !origem)) {
+    if (!busca) {
       setLinhas(null);
       setCarregando(false);
       setErro(null);
@@ -87,66 +114,75 @@ export default function Postos() {
     setCarregando(true);
     setErro(null);
     setLinhas(null);
-    const consulta = filtrarPorRaio && origem
-      ? buscarMunicipiosNoRaio(origem, raio).then((cidades) => {
+    const controller = new AbortController();
+    const limite = window.setTimeout(() => controller.abort(), 20000);
+    const consulta = busca.raio > 0 && busca.origem
+      ? buscarMunicipiosNoRaio(busca.origem, busca.raio, controller.signal).then((cidades) => {
         if (cancelado) return [];
         setCidadesNoRaio(cidades);
-        return buscarPrecosDasCidades(cidades.map((cidade) => cidade.ibge_id), produto);
+        return buscarPrecosDasCidades(cidades.map((cidade) => cidade.ibge_id), busca.produto, controller.signal);
       })
-      : buscarPrecos({ uf, municipio: municipio.trim(), produto });
+      : buscarPrecos(busca, controller.signal);
     consulta
       .then((r) => !cancelado && setLinhas(r))
-      .catch((e: Error) => !cancelado && setErro(e.message))
-      .finally(() => !cancelado && setCarregando(false));
+      .catch(() => !cancelado && setErro(controller.signal.aborted ? 'A consulta demorou demais. Tente pesquisar novamente.' : 'Não foi possível consultar os preços. Tente novamente.'))
+      .finally(() => {
+        window.clearTimeout(limite);
+        if (!cancelado) setCarregando(false);
+      });
     return () => {
       cancelado = true;
+      window.clearTimeout(limite);
+      controller.abort();
     };
-  }, [uf, municipio, produto, proximidade, origem, raio, filtrarPorRaio]);
+  }, [busca]);
 
   const resultados = useMemo(() => {
     const filtro = cidadesNoRaio.find((cidade) => String(cidade.ibge_id) === cidadeFiltrada);
     const itens = (linhas ?? []).filter((posto) => !filtro ||
       (posto.uf === filtro.uf && posto.municipio === filtro.nome.toLocaleLowerCase('pt-BR'))).map((posto) => {
       const ponto = coordenadasDoPosto(posto);
-      const referencia = filtrarPorRaio ? origem : usuario;
+      const referencia = raioAplicado ? busca?.origem : usuario;
       return { posto, km: referencia && ponto ? distanciaKm(referencia, ponto) : null };
     });
-    return filtrarPorRaio
+    return raioAplicado
       ? itens.sort((a, b) => (a.km ?? Infinity) - (b.km ?? Infinity) || a.posto.preco - b.posto.preco)
       : itens;
-  }, [linhas, usuario, origem, filtrarPorRaio, cidadesNoRaio, cidadeFiltrada]);
+  }, [linhas, usuario, busca, raioAplicado, cidadesNoRaio, cidadeFiltrada]);
   const pontosNoMapa = useMemo(() => resultados.map(({ posto }) => posto), [resultados]);
 
   return (
     <section className="comparacao">
-      <header className="pagina-titulo">
+      <header className="pagina-titulo eco-entrada">
         <h1>Postos e preços</h1>
         <p>Compare os valores informados na sua cidade.</p>
       </header>
       <div className="painel-comparacao">
-        <aside className="painel-mapa" aria-label="Mapa interativo dos postos" id="mapa-postos">
+        <aside className="painel-mapa eco-entrada" aria-label="Mapa interativo dos postos" id="mapa-postos">
           <div className="mapa-cabecalho">
             <h2>Mapa dos postos</h2>
             <button type="button" className="botao-localizacao" onClick={usarMinhaLocalizacao} disabled={localizando}>
               <Icon name="pin" /> {localizando ? 'Localizando…' : 'Usar minha localização'}
             </button>
           </div>
-          <MapaPostos postos={pontosNoMapa} usuario={usuario} modoProximo={proximidade}
+          <MapaPostos postos={pontosNoMapa} usuario={usuario} modoProximo={busca?.proximidade ?? proximidade}
             selecionado={postoSelecionado} aoSelecionar={setPostoSelecionado} />
           <div className="mapa-rodape">
             {erroLocalizacao && <p role="status">{erroLocalizacao}</p>}
-            {filtrarPorRaio && origem
-              ? <p>Sedes municipais em até {raio} km em linha reta de {proximidade ? 'você' : municipio}.</p>
+            {raioAplicado && busca
+              ? <p>Sedes municipais em até {busca.raio} km em linha reta de {busca.proximidade ? 'você' : busca.municipio}.</p>
               : <p>Os marcadores mostram postos com coordenadas no cadastro da ANP.</p>}
             {usuario && <button type="button" className="botao-texto" onClick={() => {
               setProximidade(false);
               setUsuario(null);
               setErroLocalizacao('');
               setCidadeFiltrada('');
+              if (busca?.proximidade) setBusca(null);
             }}>Limpar minha localização</button>}
           </div>
         </aside>
-        <div className="painel-precos">
+        <div className="painel-precos eco-entrada">
+          <form onSubmit={pesquisar} aria-label="Filtros de postos">
           <div className="filtros">
             <label>UF
               <select value={uf} onChange={(e) => {
@@ -156,7 +192,7 @@ export default function Postos() {
                 setProximidade(false);
                 setCidadeFiltrada('');
               }}>
-                {UFS.map((sigla) => <option key={sigla}>{sigla}</option>)}
+                {UFS.map((sigla) => <option key={sigla} value={sigla}>{sigla}</option>)}
               </select>
             </label>
             <label>Município
@@ -167,7 +203,7 @@ export default function Postos() {
               }}
                 disabled={carregandoMunicipios || municipios.length === 0}>
                 <option value="">{carregandoMunicipios ? 'Carregando…' : 'Selecione'}</option>
-                {municipios.map((cidade) => <option key={cidade.ibge_id}>{cidade.nome}</option>)}
+                {municipios.map((cidade) => <option key={cidade.ibge_id} value={cidade.nome}>{cidade.nome}</option>)}
               </select>
             </label>
             <label>Combustível
@@ -188,7 +224,13 @@ export default function Postos() {
                 {RAIOS_KM.map((km) => <option key={km} value={km}>Até {km} km</option>)}
               </select>
             </label>
-            {filtrarPorRaio && origem && <label>Cidades no raio ({cidadesNoRaio.length})
+            <button className="botao-localizacao botao-pesquisar" type="submit" disabled={!podePesquisar || carregando}>
+              <Icon name="search" /> Pesquisar
+            </button>
+          </div>
+          </form>
+          {raioAplicado && cidadesNoRaio.length > 0 && <div className="filtros-distancia">
+            <label>Cidades nos resultados ({cidadesNoRaio.length})
               <select value={cidadeFiltrada} disabled={!cidadesNoRaio.length} onChange={(e) => {
                 setCidadeFiltrada(e.target.value);
                 setPostoSelecionado(null);
@@ -198,23 +240,24 @@ export default function Postos() {
                   {cidade.nome} ({cidade.uf}) · {kmFormatado.format(cidade.km)} km
                 </option>)}
               </select>
-            </label>}
-          </div>
+            </label>
+          </div>}
 
-          <div aria-live="polite">
+          {carregando && <Carregamento mensagem="Buscando preços dos postos…" />}
+          <div aria-busy={carregando}>
             {filtrarPorRaio && municipio && !proximidade && !origem && !carregandoMunicipios &&
               <p className="vazio">Esta cidade está sem coordenadas de referência. Selecione outra ou use sua localização.</p>}
             {erroMunicipios && <p className="erro">Não foi possível carregar os municípios. Atualize a página para tentar novamente.</p>}
             {!supabaseConfigurado && <p className="vazio">Banco não configurado. Nenhum preço para exibir.</p>}
             {supabaseConfigurado && !proximidade && !municipio && !erroMunicipios && !carregandoMunicipios &&
               <p className="vazio">Selecione um município.</p>}
-            {carregando && <p className="vazio">Carregando preços…</p>}
-            {erro && <p className="erro">Não foi possível carregar os preços: {erro}</p>}
+            {carregandoMunicipios && !carregando && <p className="vazio" role="status">Carregando municípios…</p>}
+            {erro && <p className="erro" role="alert">{erro}</p>}
 
             {linhas && resultados.length === 0 && !carregando && !erro && (
-              <p className="vazio">{filtrarPorRaio
+              <p className="vazio" role="status">{raioAplicado
                 ? (cidadesNoRaio.length ? 'Não encontrei preços desse combustível nas cidades selecionadas.' : 'Nenhuma sede municipal encontrada nesse raio.')
-                : `A base da ANP ainda não tem preços de ${labelProduto(produto)} em ${municipio}.`}</p>
+                : `A base da ANP ainda não tem preços de ${labelProduto(busca?.produto ?? produto)} em ${busca?.municipio ?? municipio}.`}</p>
             )}
 
             {resultados.length > 0 && !carregando && !erro && (
@@ -231,7 +274,7 @@ export default function Postos() {
                             <br />
                             <StatusBadge status={priceStatus(l.data_coleta)} dataColeta={l.data_coleta} />
                             <div className="posto-detalhe">
-                              {filtrarPorRaio && <span>{l.municipio.toLocaleUpperCase('pt-BR')}, {l.uf}</span>}
+                              {raioAplicado && <span>{l.municipio.toLocaleUpperCase('pt-BR')}, {l.uf}</span>}
                               {km !== null && <span>{kmFormatado.format(km)} km em linha reta</span>}
                               {coordenadasDoPosto(l) ? <button type="button" className="botao-texto"
                                 aria-pressed={postoSelecionado === l.cnpj} onClick={() => {
