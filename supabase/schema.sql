@@ -36,10 +36,24 @@ create table if not exists public.import_runs (
 alter table public.fuel_prices enable row level security;
 alter table public.import_runs enable row level security;
 
-create policy "preços são públicos para leitura"
-  on public.fuel_prices for select
-  to anon, authenticated
-  using (true);
+grant select on public.fuel_prices to anon, authenticated;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'fuel_prices'
+      and policyname = 'preços são públicos para leitura'
+  ) then
+    create policy "preços são públicos para leitura"
+      on public.fuel_prices for select
+      to anon, authenticated
+      using (true);
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';
 
 -- Nenhuma policy de insert/update/delete: anon e authenticated não escrevem.
 -- O service_role ignora RLS e é usado apenas no GitHub Actions, nunca no front-end.
