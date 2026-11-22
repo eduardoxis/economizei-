@@ -167,6 +167,7 @@ export default function Postos() {
             </button>
           </div>
           <MapaPostos postos={pontosNoMapa} usuario={usuario} modoProximo={busca?.proximidade ?? proximidade}
+            origemBusca={busca?.origem ?? null} raioBuscaKm={busca?.raio ?? 0}
             selecionado={postoSelecionado} aoSelecionar={setPostoSelecionado} />
           <div className="mapa-rodape">
             {erroLocalizacao && <p role="status">{erroLocalizacao}</p>}

@@ -93,15 +93,28 @@ function criarPopup(posto: PriceRow): HTMLElement {
   return container;
 }
 
+function limitesDoRaio([lat, lng]: Coordenadas, raioKm: number): Coordenadas[] {
+  const radianos = Math.PI / 180;
+  const arco = raioKm / 6371;
+  const margemLat = arco / radianos;
+  const margemLng = Math.asin(Math.min(1, Math.sin(arco) / Math.cos(lat * radianos))) / radianos;
+  return [
+    [Math.max(-85, lat - margemLat), lng - margemLng],
+    [Math.min(85, lat + margemLat), lng + margemLng],
+  ];
+}
+
 interface Props {
   postos: PriceRow[];
   usuario: Coordenadas | null;
   modoProximo: boolean;
+  origemBusca: Coordenadas | null;
+  raioBuscaKm: number;
   selecionado: string | null;
   aoSelecionar: (cnpj: string) => void;
 }
 
-export default function MapaPostos({ postos, usuario, modoProximo, selecionado, aoSelecionar }: Props) {
+export default function MapaPostos({ postos, usuario, modoProximo, origemBusca, raioBuscaKm, selecionado, aoSelecionar }: Props) {
   const elemento = useRef<HTMLDivElement>(null);
   const inst = useRef<null | { api: Leaflet; mapa: Mapa; grupo: Grupo; trajetos: Grupo }>(null);
   const marcadores = useRef(new Map<string, Marcador>());
@@ -211,10 +224,12 @@ export default function MapaPostos({ postos, usuario, modoProximo, selecionado, 
         .bindPopup(texto).addTo(grupo);
       if (modoProximo || pontos.length === 0) pontos.push(usuario);
     }
-    if (pontos.length > 1) mapa.fitBounds(pontos, { padding: [30, 30], maxZoom: 15 });
+    if (origemBusca && raioBuscaKm > 0 && Math.abs(origemBusca[0]) < 85) {
+      mapa.fitBounds(limitesDoRaio(origemBusca, raioBuscaKm), { padding: [28, 28], maxZoom: 15 });
+    } else if (pontos.length > 1) mapa.fitBounds(pontos, { padding: [30, 30], maxZoom: 15 });
     else if (pontos.length === 1) mapa.setView(pontos[0], 14);
     else mapa.setView([-14.2, -51.9], 4);
-  }, [postos, usuario, modoProximo, status, aoSelecionar]);
+  }, [postos, usuario, modoProximo, origemBusca, raioBuscaKm, status, aoSelecionar]);
 
   useEffect(() => {
     for (const [cnpj, marcador] of marcadores.current) {
