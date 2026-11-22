@@ -31,7 +31,7 @@ export default function Calculadora() {
 
   return (
     <section>
-      <h1>Calculadora</h1>
+      <header className="pagina-titulo"><h1>Calculadora</h1><p>Compare o gasto de abastecer em dois postos.</p></header>
       <p className="aviso">Estimativa. Os preços informados podem não corresponder ao valor atual no posto.</p>
 
       <div className="form">
