@@ -1,0 +1,70 @@
+:root {
+  --verde: #16a34a;
+  --verde2: #22c55e;
+  --verde-claro: #dcfce7;
+  --azul: #0f172a;
+  --fundo: #f8fafc;
+  --cinza: #64748b;
+  --amarelo: #f59e0b;
+  --vermelho: #ef4444;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  color: var(--azul);
+  background: var(--fundo);
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --fundo: #0f172a;
+    --azul: #f8fafc;
+    --cinza: #94a3b8;
+    --verde-claro: #14532d;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+
+.topo {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; background: var(--azul); color: #fff;
+}
+.topo a { color: #fff; text-decoration: none; font-weight: 600; }
+.topo nav { display: flex; gap: 16px; }
+
+main { max-width: 720px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.5rem; }
+.slogan, .vazio { color: var(--cinza); }
+
+.atalhos { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+.atalhos a {
+  padding: 14px; border-radius: 12px; background: var(--verde); color: #fff;
+  text-decoration: none; font-weight: 600; text-align: center;
+}
+
+.filtros, .form { display: grid; gap: 10px; margin: 16px 0; }
+.form label { display: grid; gap: 4px; font-size: 0.9rem; }
+input, select {
+  padding: 10px; border-radius: 10px; border: 1px solid #cbd5e1;
+  font-size: 1rem; background: #fff; color: var(--azul);
+}
+
+.lista { list-style: none; padding: 0; margin: 0; }
+.item {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 12px; margin-bottom: 8px; border-radius: 12px; background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+.preco { font-weight: 700; color: var(--verde); white-space: nowrap; }
+
+.badge { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; }
+.badge.vigente { background: var(--verde-claro); color: var(--verde); }
+.badge.desatualizado { background: #fef3c7; color: #92400e; }
+
+.aviso {
+  margin-top: 16px; padding: 10px 12px; border-radius: 10px;
+  background: var(--verde-claro); font-size: 0.85rem;
+}
+.alerta { padding: 12px; border-radius: 10px; background: #fef3c7; color: #92400e; margin: 16px 0; }
+.erro { color: var(--vermelho); }
+.resultado { font-weight: 600; }
