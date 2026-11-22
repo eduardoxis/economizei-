@@ -16,6 +16,22 @@ function getClient(): SupabaseClient {
   return client;
 }
 
+export interface Municipio {
+  ibge_id: number;
+  nome: string;
+}
+
+export async function buscarMunicipios(uf: string): Promise<Municipio[]> {
+  const { data, error } = await getClient()
+    .from('municipalities')
+    .select('ibge_id, nome')
+    .eq('uf', uf)
+    .order('nome');
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Municipio[];
+}
+
 /** Preços mais recentes de um produto em um município. */
 export async function buscarPrecos(params: {
   uf: string;
@@ -26,7 +42,7 @@ export async function buscarPrecos(params: {
     .from('fuel_prices')
     .select('cnpj, razao_social, municipio, uf, produto, preco, data_coleta')
     .eq('uf', params.uf)
-    .eq('municipio', params.municipio)
+    .eq('municipio', params.municipio.toLocaleLowerCase('pt-BR'))
     .eq('produto', params.produto)
     .order('preco', { ascending: true })
     .limit(200);

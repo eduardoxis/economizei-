@@ -57,3 +57,25 @@ notify pgrst, 'reload schema';
 
 -- Nenhuma policy de insert/update/delete: anon e authenticated não escrevem.
 -- O service_role ignora RLS e é usado apenas no GitHub Actions, nunca no front-end.
+
+-- Catálogo oficial do IBGE, separado da amostra semanal de preços da ANP.
+create table if not exists public.municipalities (
+  ibge_id integer primary key,
+  nome text not null check (length(nome) > 0),
+  uf char(2) not null check (uf ~ '^[A-Z]{2}$')
+);
+create index if not exists municipalities_uf_nome_idx on public.municipalities (uf,nome);
+alter table public.municipalities enable row level security;
+do $
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'municipalities'
+      and policyname = 'Catálogo de municípios para leitura'
+  ) then
+    create policy "Catálogo de municípios para leitura"
+      on public.municipalities for select to anon, authenticated using (true);
+  end if;
+end $;
+grant select on public.municipalities to anon,authenticated;
+notify pgrst, 'reload schema';

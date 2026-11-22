@@ -1,8 +1,11 @@
 import Icon from '../components/Icon';
 import { useEffect, useState } from 'react';
-import { buscarPrecos, supabaseConfigurado } from '../lib/supabase';
+import { buscarMunicipios, buscarPrecos, supabaseConfigurado, type Municipio } from '../lib/supabase';
 import { PRODUTOS, labelProduto, priceStatus, type PriceRow, type Produto } from '../lib/prices';
 import { AvisoPrecos, StatusBadge } from '../components/PriceNotice';
+
+const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 
 export default function Postos() {
   const [uf, setUf] = useState('GO');
@@ -11,10 +14,27 @@ export default function Postos() {
   const [linhas, setLinhas] = useState<PriceRow[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
+  const [municipios, setMunicipios] = useState<Municipio[]>([]);
+  const [carregandoMunicipios, setCarregandoMunicipios] = useState(false);
+  const [erroMunicipios, setErroMunicipios] = useState(false);
+
+  useEffect(() => {
+    if (!supabaseConfigurado) return;
+    let cancelado = false;
+    setCarregandoMunicipios(true);
+    setErroMunicipios(false);
+    buscarMunicipios(uf)
+      .then((lista) => !cancelado && setMunicipios(lista))
+      .catch(() => !cancelado && setErroMunicipios(true))
+      .finally(() => !cancelado && setCarregandoMunicipios(false));
+    return () => { cancelado = true; };
+  }, [uf]);
 
   useEffect(() => {
     if (!supabaseConfigurado || !municipio.trim()) {
       setLinhas(null);
+      setCarregando(false);
+      setErro(null);
       return;
     }
     let cancelado = false;
@@ -45,10 +65,20 @@ export default function Postos() {
         <div className="painel-precos">
           <div className="filtros">
             <label>UF
-              <input maxLength={2} value={uf} onChange={(e) => setUf(e.target.value.toUpperCase())} />
+              <select value={uf} onChange={(e) => {
+                setUf(e.target.value);
+                setMunicipio('');
+                setMunicipios([]);
+              }}>
+                {UFS.map((sigla) => <option key={sigla}>{sigla}</option>)}
+              </select>
             </label>
             <label>Município
-              <input placeholder="Ex.: Luziânia" value={municipio} onChange={(e) => setMunicipio(e.target.value)} />
+              <select value={municipio} onChange={(e) => setMunicipio(e.target.value)}
+                disabled={carregandoMunicipios || municipios.length === 0}>
+                <option value="">{carregandoMunicipios ? 'Carregando…' : 'Selecione'}</option>
+                {municipios.map((cidade) => <option key={cidade.ibge_id}>{cidade.nome}</option>)}
+              </select>
             </label>
             <label>Combustível
               <select value={produto} onChange={(e) => setProduto(e.target.value as Produto)}>
@@ -58,13 +88,15 @@ export default function Postos() {
           </div>
 
           <div aria-live="polite">
+            {erroMunicipios && <p className="erro">Não foi possível carregar os municípios. Atualize a página para tentar novamente.</p>}
             {!supabaseConfigurado && <p className="vazio">Banco não configurado. Nenhum preço para exibir.</p>}
-            {supabaseConfigurado && !municipio.trim() && <p className="vazio">Informe um município.</p>}
+            {supabaseConfigurado && !municipio && !erroMunicipios && !carregandoMunicipios &&
+              <p className="vazio">Selecione um município.</p>}
             {carregando && <p className="vazio">Carregando preços…</p>}
             {erro && <p className="erro">Não foi possível carregar os preços: {erro}</p>}
 
             {linhas?.length === 0 && !carregando && !erro && (
-              <p className="vazio">Nenhum registro de {labelProduto(produto)} em {municipio}.</p>
+              <p className="vazio">A base da ANP ainda não tem preços de {labelProduto(produto)} em {municipio}.</p>
             )}
 
             {linhas && linhas.length > 0 && !carregando && !erro && (
