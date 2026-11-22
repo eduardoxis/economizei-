@@ -27,10 +27,9 @@ h2 { font-size: clamp(1.2rem, 2vw, 1.6rem); letter-spacing: -.035em; }
   align-items: center;
   justify-content: space-between;
 }
-.marca { display: flex; align-items: center; font-size: 1.35rem; font-weight: 800; letter-spacing: -.06em; }
+.marca { display: flex; align-items: center; }
 .marca-logo { display: block; height: 64px; width: auto; object-fit: contain; }
-.marca-mais { color: #2f763f; }
-.marca-icone, .atalho-icone, .posto-icone {
+.atalho-icone, .posto-icone {
   display: grid;
   flex: none;
   place-items: center;
@@ -40,7 +39,6 @@ h2 { font-size: clamp(1.2rem, 2vw, 1.6rem); letter-spacing: -.035em; }
   background: var(--verde);
   color: #142a19;
 }
-.marca-icone { margin-right: 10px; }
 .navegacao { display: flex; gap: 6px; }
 .navegacao a {
   display: flex;
@@ -154,10 +152,7 @@ input, select {
 
 @media (max-width: 760px) {
   .topo-inner { width: calc(100% - 32px); min-height: 59px; }
-  .marca { font-size: 1.14rem; }
   .marca-logo { height: 50px; }
-  .marca-icone { width: 34px; height: 34px; }
-  .marca-icone svg { width: 17px; height: 17px; }
   .navegacao {
     position: fixed;
     z-index: 5;

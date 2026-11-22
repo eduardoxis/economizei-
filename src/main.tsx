@@ -5,23 +5,8 @@ import Home from './pages/Home';
 import Postos from './pages/Postos';
 import Calculadora from './pages/Calculadora';
 import Icon from './components/Icon';
+import logo from './assets/economizei-logo.webp';
 import './styles.css';
-
-const arquivosDaMarca = import.meta.glob<string>('./assets/{economizei-logo,economizei-favicon}.png', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-});
-const logo = arquivosDaMarca['./assets/economizei-logo.png'];
-const favicon = arquivosDaMarca['./assets/economizei-favicon.png'];
-
-if (favicon) {
-  const iconeDaAba = document.createElement('link');
-  iconeDaAba.rel = 'icon';
-  iconeDaAba.type = 'image/png';
-  iconeDaAba.href = favicon;
-  document.head.append(iconeDaAba);
-}
 
 const links = [
   { to: '/', label: 'Início', icon: 'home' },
@@ -35,14 +20,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <header className="topo">
         <div className="topo-inner">
           <Link className="marca" to="/">
-            {logo ? (
-              <img className="marca-logo" src={logo} alt="Economizei+" width={1536} height={1024} />
-            ) : (
-              <>
-                <span className="marca-icone"><Icon name="fuel" /></span>
-                Economizei<span className="marca-mais">+</span>
-              </>
-            )}
+            <img className="marca-logo" src={logo} alt="Economizei+" width={360} height={240} />
           </Link>
           <nav className="navegacao" aria-label="Navegação principal">
             {links.map(({ to, label, icon }) => (
