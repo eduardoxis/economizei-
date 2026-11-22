@@ -79,3 +79,53 @@ begin
 end $;
 grant select on public.municipalities to anon,authenticated;
 notify pgrst, 'reload schema';
+
+-- Localizações do cadastro de revendedores da ANP e busca por proximidade.
+create table if not exists public.station_locations (
+  cnpj text primary key check (cnpj ~ '^[0-9]{14}$'),
+  latitude double precision not null check (latitude between -90 and 90),
+  longitude double precision not null check (longitude between -180 and 180),
+  endereco text
+);
+alter table public.station_locations enable row level security;
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='station_locations'
+      and policyname='Localizações públicas da ANP'
+  ) then
+    create policy "Localizações públicas da ANP" on public.station_locations for select to anon, authenticated using (true);
+  end if;
+end $$;
+grant select on public.station_locations to anon, authenticated;
+create index if not exists station_locations_lat_lng_idx on public.station_locations (latitude, longitude);
+
+create or replace view public.priced_stations with (security_invoker = true) as
+select distinct on (p.cnpj, p.produto)
+  p.cnpj, p.razao_social, p.municipio, p.uf, p.produto, p.preco, p.data_coleta,
+  s.latitude, s.longitude, s.endereco
+from public.fuel_prices p
+left join public.station_locations s using (cnpj)
+order by p.cnpj, p.produto, p.data_coleta desc, p.id desc;
+grant select on public.priced_stations to anon, authenticated;
+
+create or replace function public.nearby_priced_stations(
+  origin_lat double precision, origin_lng double precision, fuel_type text
+) returns setof public.priced_stations
+language sql stable security invoker set search_path = ''
+as $$
+  select p.*
+  from public.priced_stations p
+  where origin_lat between -85 and 85 and origin_lng between -180 and 180
+    and p.produto = fuel_type
+    and p.latitude between origin_lat - 0.70 and origin_lat + 0.70
+    and p.longitude between origin_lng - 0.70 / greatest(0.08, cos(radians(origin_lat)))
+                        and origin_lng + 0.70 / greatest(0.08, cos(radians(origin_lat)))
+  order by power(p.latitude - origin_lat, 2)
+         + power((p.longitude - origin_lng) * cos(radians(origin_lat)), 2),
+           p.preco, p.cnpj
+  limit 100;
+$$;
+revoke execute on function public.nearby_priced_stations(double precision,double precision,text) from public;
+grant execute on function public.nearby_priced_stations(double precision,double precision,text) to anon, authenticated;
+notify pgrst, 'reload schema';

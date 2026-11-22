@@ -17,6 +17,25 @@ export interface PriceRow {
   produto: Produto;
   preco: number;
   data_coleta: string; // ISO yyyy-mm-dd
+  latitude: number | null;
+  longitude: number | null;
+  endereco: string | null;
+}
+
+export type Coordenadas = [latitude: number, longitude: number];
+
+export function coordenadasDoPosto(posto: PriceRow): Coordenadas | null {
+  return posto.latitude !== null && posto.longitude !== null
+    ? [posto.latitude, posto.longitude] : null;
+}
+
+export function distanciaKm(origem: Coordenadas, destino: Coordenadas): number {
+  const rad = Math.PI / 180;
+  const dLat = (destino[0] - origem[0]) * rad;
+  const dLng = (destino[1] - origem[1]) * rad;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(origem[0] * rad) * Math.cos(destino[0] * rad) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
 export type PriceStatus = 'vigente' | 'desatualizado';
